@@ -6,10 +6,10 @@ locals {
 # https://www.terraform.io/docs/providers/google/d/google_container_registry_repository.html
 data "google_container_registry_repository" "registry" {}
 
-# Provides access to available Google Container Engine versions in a zone for a given project.
+# Provides access to available Google Container Engine versions in a region for a given project.
 # https://www.terraform.io/docs/providers/google/d/google_container_engine_versions.html
 data "google_container_engine_versions" "region" {
-  zone = "${var.general["zone"]}"
+  region = "${var.general["region"]}"
 }
 
 # Manages a Node Pool resource within GKE
@@ -17,8 +17,8 @@ data "google_container_engine_versions" "region" {
 resource "google_container_node_pool" "new_container_cluster_node_pool" {
   count = "${length(var.node_pool)}"
 
-  name       = "${local.name_prefix}-${var.general["zone"]}-pool-${count.index}"
-  zone       = "${var.general["zone"]}"
+  name       = "${local.name_prefix}-${var.general["region"]}-pool-${count.index}"
+  region     = "${var.general["region"]}"
   node_count = "${lookup(var.node_pool[count.index], "node_count", 3)}"
   cluster    = "${google_container_cluster.new_container_cluster.name}"
 
@@ -55,9 +55,10 @@ resource "google_container_node_pool" "new_container_cluster_node_pool" {
 # Creates a Google Kubernetes Engine (GKE) cluster
 # https://www.terraform.io/docs/providers/google/r/container_cluster.html
 resource "google_container_cluster" "new_container_cluster" {
-  name        = "${local.name_prefix}-${var.general["zone"]}-master"
-  description = "Kubernetes ${var.general["name"]} in ${var.general["zone"]}"
-  zone        = "${var.general["zone"]}"
+  name        = "${local.name_prefix}-${var.general["region"]}-master"
+  description = "Kubernetes ${var.general["name"]} in ${var.general["region"]}"
+  region      = "${var.general["region"]}"
+
   # region - Conflict zone
 
   network                  = "${lookup(var.master, "network", "default")}"
@@ -65,7 +66,6 @@ resource "google_container_cluster" "new_container_cluster" {
   additional_zones         = ["${var.node_additional_zones}"]
   initial_node_count       = "${lookup(var.default_node_pool, "node_count", 2)}"
   remove_default_node_pool = "${lookup(var.default_node_pool, "remove", false)}"
-  
   addons_config {
     horizontal_pod_autoscaling {
       disabled = "${lookup(var.master, "disable_horizontal_pod_autoscaling", false)}"
@@ -83,25 +83,21 @@ resource "google_container_cluster" "new_container_cluster" {
       disabled = "${lookup(var.master, "disable_network_policy_config", true)}"
     }
   }
-  
-  # cluster_ipv4_cidr - default 
+  # cluster_ipv4_cidr - default
   enable_kubernetes_alpha = "${lookup(var.master, "enable_kubernetes_alpha", false)}"
   enable_legacy_abac      = "${lookup(var.master, "enable_legacy_abac", false)}"
   private_cluster         = "${lookup(var.master, "private", false)}"
   ip_allocation_policy    = "${var.ip_allocation_policy}"
   master_ipv4_cidr_block  = "${var.ipv4_cidr_block}"
-  
   maintenance_policy {
     daily_maintenance_window {
       start_time = "${lookup(var.master, "maintenance_window", "04:30")}"
     }
   }
-  
   # WARNING BETA
   pod_security_policy_config {
     enabled = "${lookup(var.master, "enable_pod_security_policy_config", false)}"
   }
-  
   master_auth {
     username = "${var.master["username"]}"
     password = "${var.master["password"]}"
@@ -111,20 +107,20 @@ resource "google_container_cluster" "new_container_cluster" {
       issue_client_certificate = "${lookup(var.master, "enable_client_certificate", false)}"
     }
   }
-  
   # master_authorized_networks_config - disable (security)
   min_master_version = "${lookup(var.master, "version", data.google_container_engine_versions.region.latest_master_version)}"
   node_version       = "${lookup(var.master, "version", data.google_container_engine_versions.region.latest_node_version)}"
   monitoring_service = "${lookup(var.master, "monitoring_service", "none")}"
   logging_service    = "${lookup(var.master, "logging_service", "logging.googleapis.com")}"
-  
   node_config {
     disk_size_gb    = "${lookup(var.default_node_pool, "disk_size_gb", 10)}"
     disk_type       = "${lookup(var.default_node_pool, "disk_type", "pd-standard")}"
     image_type      = "${lookup(var.default_node_pool, "image", "COS")}"
     local_ssd_count = "${lookup(var.default_node_pool, "local_ssd_count", 0)}"
     machine_type    = "${lookup(var.default_node_pool, "machine_type", "n1-standard-1")}"
+
     # min_cpu_platform - disable (useless)
+
 
     # BUG Provider - recreate loop
     # guest_accelerator {
@@ -138,11 +134,9 @@ resource "google_container_cluster" "new_container_cluster" {
     labels          = "${var.labels}"
     tags            = "${var.tags}"
     metadata        = "${var.metadata}"
-
     workload_metadata_config {
       node_metadata = "${lookup(var.default_node_pool, "node_metadata", "EXPOSE")}"
     }
-
     # WARNING BETA
     taint = "${var.taint}"
   }
